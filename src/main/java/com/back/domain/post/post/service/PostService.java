@@ -1,5 +1,6 @@
 package com.back.domain.post.post.service;
 
+import com.back.domain.meber.member.entity.Member;
 import com.back.domain.post.post.entity.Post;
 import com.back.domain.post.post.repository.PostRepository;
 import com.back.domain.post.postComment.entity.PostComment;
@@ -18,8 +19,8 @@ public class PostService {
         return postRepository.count();
     }
 
-    public Post create(String title, String content) {
-        Post post = new Post(title, content);
+    public Post create(Member author, String title, String content) {
+        Post post = new Post(author, title, content);
 
         return postRepository.save(post);
     }
@@ -44,10 +45,10 @@ public class PostService {
         return postRepository.findById(id).get();
     }
 
-    public PostComment createComment(Post post, String content) {
+    public void createComment(Member author, Post post, String content) {
         // Post.addComment 내부에서 자식(PostComment)에 this(post)를 세팅
         // cascade=PERSIST 옵션 덕분에 부모 저장 시 자식도 함께 INSERT 가능
-        return post.addComment(content);
+        post.addComment(author, content);
     }
 
     public boolean deleteComment(Post post, PostComment postComment) {
@@ -65,6 +66,10 @@ public class PostService {
 
     public Optional<Post> findLatest() {
         return postRepository.findFirstByOrderByIdDesc();
+    }
+
+    public PostComment writeComment(Member author, Post post, String content) {
+        return post.addComment(author, content);
     }
 
     public void flush(){

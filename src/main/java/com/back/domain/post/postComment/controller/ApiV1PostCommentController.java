@@ -1,15 +1,20 @@
 package com.back.domain.post.postComment.controller;
 
+import com.back.domain.meber.member.entity.Member;
+import com.back.domain.meber.member.service.MemberService;
 import com.back.domain.post.post.entity.Post;
 import com.back.domain.post.post.service.PostService;
 import com.back.domain.post.postComment.dto.PostCommentDto;
 import com.back.domain.post.postComment.dto.PostCommentModifyRequestBody;
 import com.back.domain.post.postComment.dto.PostCommentWriteRequestBody;
 import com.back.domain.post.postComment.entity.PostComment;
+import com.back.global.exception.ServiceException;
 import com.back.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +27,7 @@ import java.util.List;
 @Tag(name="ApiV1PostCommentController", description = "API 댓글 컨트롤러")
 public class ApiV1PostCommentController {
     private final PostService postService;
+    private final MemberService memberService;
 
     @GetMapping
     @Operation(summary = "다건 조회")
@@ -53,9 +59,18 @@ public class ApiV1PostCommentController {
     @PostMapping
     @ResponseBody
     @Operation(summary = "작성")
-    public RsData<PostCommentDto> write(@Valid @RequestBody PostCommentWriteRequestBody request, @PathVariable long postId){
+    public RsData<PostCommentDto> write(@Valid @RequestBody PostCommentWriteRequestBody request,
+                                        @PathVariable long postId,
+                                        @Valid @RequestBody PostCommentWriteRequestBody reqBody,
+                                        @NotBlank @Size(min = 2, max = 50) @RequestHeader("Authorization") String authorization){
+
+        String apiKey = authorization.replace("Bearer ", "");
+
+        Member author = memberService.findByApiKey(apiKey)
+                .orElseThrow(() -> new ServiceException("401-1", "존재하지 않는 회원입니다."));
         Post post = postService.findById(postId);
-        PostComment postComment = postService.createComment(post, request.content());
+
+        PostComment postComment = postService.writeComment(author, post, request.content());
 
         postService.flush();
         return new RsData<>("201-1", "%d번 댓글이 작성되었습니다.".formatted(postComment.getId()), new PostCommentDto(postComment));
