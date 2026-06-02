@@ -7,14 +7,14 @@ import com.back.domain.meber.member.dto.MemberLoginResBody;
 import com.back.domain.meber.member.entity.Member;
 import com.back.domain.meber.member.service.MemberService;
 import com.back.global.exception.ServiceException;
+import com.back.global.rq.Rq;
 import com.back.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1/members")
@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name="ApiV1MemberController", description = "API 맴버 컨트롤러")
 public class ApiV1MemberController {
     private final MemberService memberService;
+    private final Rq rq;
 
     @PostMapping
     public RsData<MemberDto> join(@Valid @RequestBody MemberJoinReqBody reqBody) {
@@ -35,7 +36,8 @@ public class ApiV1MemberController {
     }
 
     @PostMapping("/login")
-    public RsData<MemberLoginResBody> login(@Valid @RequestBody MemberLoginReqBody reqBody) {
+    public RsData<MemberLoginResBody> login(@Valid @RequestBody MemberLoginReqBody reqBody,
+                                            HttpServletResponse response) {
         Member member = memberService.findByUsername(reqBody.username())
                 .orElseThrow(() -> new ServiceException("401-1", "존재하지 않는 회원입니다."));
 
@@ -43,6 +45,10 @@ public class ApiV1MemberController {
             throw new ServiceException("401-2", "비밀번호가 일치하지 않습니다.");
         }
 
+        Cookie cookie = new Cookie("apiKey", member.getApiKey());
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        response.addCookie(cookie);
 
         return new RsData<>(
                 "200-1",
@@ -51,6 +57,16 @@ public class ApiV1MemberController {
                         new MemberDto(member),
                         member.getApiKey())
         );
+    }
 
+    @GetMapping("/me")
+    public RsData<MemberDto> me() {
+        Member actor = rq.getActor();
+
+        return new RsData(
+                "200-1",
+                "%s님 정보입니다.".formatted(actor.getNickname()),
+                new MemberDto(actor)
+        );
     }
 }

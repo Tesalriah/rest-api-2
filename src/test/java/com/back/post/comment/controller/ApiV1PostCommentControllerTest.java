@@ -1,5 +1,7 @@
 package com.back.post.comment.controller;
 
+import com.back.domain.meber.member.entity.Member;
+import com.back.domain.meber.member.service.MemberService;
 import com.back.domain.post.post.entity.Post;
 import com.back.domain.post.post.service.PostService;
 import com.back.domain.post.postComment.controller.ApiV1PostCommentController;
@@ -32,6 +34,8 @@ public class ApiV1PostCommentControllerTest {
 
     @Autowired
     private PostService postService;
+    @Autowired
+    private MemberService memberService;
 
     @Test
     @DisplayName("댓글 조회 단건")
@@ -101,10 +105,14 @@ public class ApiV1PostCommentControllerTest {
         long postId = 1;
         long id = 1;
 
+        Post beforePost = postService.findById(postId);
+        String apiKey = beforePost.getAuthor().getApiKey();
+
         //요청을 보냅니다.
         ResultActions resultActions = mvc
                 .perform(
                         delete("/api/v1/posts/%d/comments/%d".formatted(postId, id))
+                        .header("Authorization", "Bearer " + apiKey)
                 )
                 .andDo(print()); // 응답을 출력합니다.
 
@@ -124,11 +132,15 @@ public class ApiV1PostCommentControllerTest {
         long postId = 1;
         long id = 1;
 
+        Post beforePost = postService.findById(postId);
+        String apiKey = beforePost.getAuthor().getApiKey();
+
         //요청을 보냅니다.
         ResultActions resultActions = mvc
                 .perform(
                         put("/api/v1/posts/%d/comments/%d".formatted(postId, id))
                                 .contentType(MediaType.APPLICATION_JSON)
+                                .header("Authorization", "Bearer " + apiKey)
                                 .content("""
                                         {
                                             "content": "내용 new"
@@ -184,5 +196,137 @@ public class ApiV1PostCommentControllerTest {
                 .andExpect(jsonPath("$.data.modifyDate").value(Matchers.startsWith(postComment.getModifyDate().toString().substring(0, 20))))
                 .andExpect(jsonPath("$.data.authorName").value(postComment.getAuthor().getNickname()))
                 .andExpect(jsonPath("$.data.content").value("내용 new"));
+    }
+    @Test
+    @DisplayName("댓글 등록, 누락 authorization header")
+    void t6() throws Exception {
+        long postId = 1;
+
+        ResultActions resultActions = mvc
+                .perform(
+                        post("/api/v1/posts/%d/comments".formatted(postId))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "content": "내용 new"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(ApiV1PostCommentController.class))
+                .andExpect(handler().methodName("write"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-1"))
+                .andExpect(jsonPath("$.msg").value("로그인 후 사용해주세요."));
+    }
+
+    @Test
+    @DisplayName("댓글 등록, 잘못된 authorization header")
+    void t7() throws Exception {
+        long postId = 1;
+
+        ResultActions resultActions = mvc
+                .perform(
+                        post("/api/v1/posts/%d/comments".formatted(postId))
+                                .header("Authorization", "wrong-api-key")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "content": "내용 new"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(ApiV1PostCommentController.class))
+                .andExpect(handler().methodName("write"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-2"))
+                .andExpect(jsonPath("$.msg").value("인증 정보가 올바르지 않습니다."));
+    }
+
+    @Test
+    @DisplayName("댓글 등록, 잘못된 authorization header")
+    void t8() throws Exception {
+        long postId = 1;
+
+        ResultActions resultActions = mvc
+                .perform(
+                        post("/api/v1/posts/%d/comments".formatted(postId))
+                                .header("Authorization", "Bearer wrong-api-key")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                            "content": "내용 new"
+                                        }
+                                        """)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(handler().handlerType(ApiV1PostCommentController.class))
+                .andExpect(handler().methodName("write"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.resultCode").value("401-3"))
+                .andExpect(jsonPath("$.msg").value("회원을 찾을 수 없습니다."));
+    }
+
+    @Test
+    @DisplayName("댓글 삭제, without permission")
+    void t9() throws Exception {
+        long postId = 1;
+        long id = 1;
+
+        Member author = memberService.findByUsername("user2").get();
+        String apiKey = author.getApiKey();
+
+        //요청을 보냅니다.
+        ResultActions resultActions = mvc
+                .perform(
+                        delete("/api/v1/posts/%d/comments/%d".formatted(postId, id))
+                                .header("Authorization", "Bearer " + apiKey)
+                )
+                .andDo(print());
+
+        resultActions
+                .andExpect(status().isForbidden())
+                .andExpect(handler().handlerType(ApiV1PostCommentController.class))
+                .andExpect(handler().methodName("delete"))
+                .andExpect(jsonPath("$.resultCode").value("403-1"))
+                .andExpect(jsonPath("$.msg").value("%d번 댓글 삭제 권한이 없습니다.".formatted(id)));
+    }
+
+    @Test
+    @DisplayName("댓글 수정, without permission")
+    void t10() throws Exception {
+        long postId = 1;
+        long id = 1;
+
+        Member author = memberService.findByUsername("user2").get();
+        String apiKey = author.getApiKey();
+
+        //요청을 보냅니다.
+        ResultActions resultActions = mvc
+                .perform(
+                        put("/api/v1/posts/%d/comments/%d".formatted(postId, id))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .header("Authorization", "Bearer " + apiKey)
+                                .content("""
+                                        {
+                                            "content": "내용 new"
+                                        }
+                                        """)
+                )
+                .andDo(print()); // 응답을 출력합니다.
+
+        resultActions
+                .andExpect(status().isForbidden())
+                .andExpect(handler().handlerType(ApiV1PostCommentController.class))
+                .andExpect(handler().methodName("modify"))
+                .andExpect(jsonPath("$.resultCode").value("403-1"))
+                .andExpect(jsonPath("$.msg").value("%d번 댓글 수정 권한이 없습니다.".formatted(id)));
     }
 }

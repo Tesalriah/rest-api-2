@@ -8,13 +8,11 @@ import com.back.domain.post.postComment.dto.PostCommentDto;
 import com.back.domain.post.postComment.dto.PostCommentModifyRequestBody;
 import com.back.domain.post.postComment.dto.PostCommentWriteRequestBody;
 import com.back.domain.post.postComment.entity.PostComment;
-import com.back.global.exception.ServiceException;
+import com.back.global.rq.Rq;
 import com.back.global.rsData.RsData;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +26,7 @@ import java.util.List;
 public class ApiV1PostCommentController {
     private final PostService postService;
     private final MemberService memberService;
+    private final Rq rq;
 
     @GetMapping
     @Operation(summary = "다건 조회")
@@ -60,17 +59,12 @@ public class ApiV1PostCommentController {
     @ResponseBody
     @Operation(summary = "작성")
     public RsData<PostCommentDto> write(@Valid @RequestBody PostCommentWriteRequestBody request,
-                                        @PathVariable long postId,
-                                        @Valid @RequestBody PostCommentWriteRequestBody reqBody,
-                                        @NotBlank @Size(min = 2, max = 50) @RequestHeader("Authorization") String authorization){
+                                        @PathVariable long postId){
+        Member actor = rq.getActor();
 
-        String apiKey = authorization.replace("Bearer ", "");
-
-        Member author = memberService.findByApiKey(apiKey)
-                .orElseThrow(() -> new ServiceException("401-1", "존재하지 않는 회원입니다."));
         Post post = postService.findById(postId);
 
-        PostComment postComment = postService.writeComment(author, post, request.content());
+        PostComment postComment = postService.writeComment(actor, post, request.content());
 
         postService.flush();
         return new RsData<>("201-1", "%d번 댓글이 작성되었습니다.".formatted(postComment.getId()), new PostCommentDto(postComment));
@@ -83,9 +77,13 @@ public class ApiV1PostCommentController {
             @PathVariable long postId,
             @PathVariable long id
     ) {
+        Member actor = rq.getActor();
+
         Post post = postService.findById(postId);
 
         PostComment postComment = post.findCommentById(id).get();
+
+        postComment.checkActorCanDelete(actor);
 
         postService.deleteComment(post, postComment);
 
@@ -95,10 +93,15 @@ public class ApiV1PostCommentController {
     @Transactional
     @PutMapping("/{id}")
     @Operation(summary = "수정")
-    public RsData<PostCommentDto> modify(@PathVariable long postId,@PathVariable long id, @Valid @RequestBody PostCommentModifyRequestBody reqBody){
+    public RsData<PostCommentDto> modify(@PathVariable long postId,@PathVariable long id,
+                                         @Valid @RequestBody PostCommentModifyRequestBody reqBody){
+        Member actor = rq.getActor();
+
         Post post = postService.findById(postId);
 
         PostComment postComment = post.findCommentById(id).get();
+
+        postComment.checkActorCanModify(actor);
 
         postService.modifyComment(postComment, reqBody.content());
 
