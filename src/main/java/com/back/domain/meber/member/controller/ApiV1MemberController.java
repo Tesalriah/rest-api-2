@@ -9,9 +9,8 @@ import com.back.domain.meber.member.service.MemberService;
 import com.back.global.exception.ServiceException;
 import com.back.global.rq.Rq;
 import com.back.global.rsData.RsData;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/members")
 @RequiredArgsConstructor
 @Tag(name="ApiV1MemberController", description = "API 맴버 컨트롤러")
+@SecurityRequirement(name = "bearerAuth")
 public class ApiV1MemberController {
     private final MemberService memberService;
     private final Rq rq;
@@ -36,8 +36,7 @@ public class ApiV1MemberController {
     }
 
     @PostMapping("/login")
-    public RsData<MemberLoginResBody> login(@Valid @RequestBody MemberLoginReqBody reqBody,
-                                            HttpServletResponse response) {
+    public RsData<MemberLoginResBody> login(@Valid @RequestBody MemberLoginReqBody reqBody) {
         Member member = memberService.findByUsername(reqBody.username())
                 .orElseThrow(() -> new ServiceException("401-1", "존재하지 않는 회원입니다."));
 
@@ -45,10 +44,7 @@ public class ApiV1MemberController {
             throw new ServiceException("401-2", "비밀번호가 일치하지 않습니다.");
         }
 
-        Cookie cookie = new Cookie("apiKey", member.getApiKey());
-        cookie.setPath("/");
-        cookie.setHttpOnly(true);
-        response.addCookie(cookie);
+        rq.setCookie("apiKey", member.getApiKey());
 
         return new RsData<>(
                 "200-1",
@@ -67,6 +63,17 @@ public class ApiV1MemberController {
                 "200-1",
                 "%s님 정보입니다.".formatted(actor.getNickname()),
                 new MemberDto(actor)
+        );
+    }
+
+    @DeleteMapping("/logout")
+    public RsData<Void> logout() {
+
+        rq.deleteCookie("apiKey");
+
+        return new RsData<>(
+                "200-1",
+                "로그아웃 되었습니다."
         );
     }
 }
