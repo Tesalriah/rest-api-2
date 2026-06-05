@@ -44,6 +44,9 @@ public class ApiV1MemberController {
             throw new ServiceException("401-2", "비밀번호가 일치하지 않습니다.");
         }
 
+        String accessToken = memberService.getAccessToken(member);
+        rq.setCookie("accessToken", accessToken);
+
         rq.setCookie("apiKey", member.getApiKey());
 
         return new RsData<>(
@@ -51,7 +54,9 @@ public class ApiV1MemberController {
                 "%s님 환영합니다.".formatted(member.getNickname()),
                 new MemberLoginResBody(
                         new MemberDto(member),
-                        member.getApiKey())
+                        member.getApiKey(),
+                        accessToken
+                )
         );
     }
 
