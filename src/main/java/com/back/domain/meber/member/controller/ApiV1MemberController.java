@@ -40,13 +40,13 @@ public class ApiV1MemberController {
         Member member = memberService.findByUsername(reqBody.username())
                 .orElseThrow(() -> new ServiceException("401-1", "존재하지 않는 회원입니다."));
 
-        if (!member.getPassword().equals(reqBody.password())) {
-            throw new ServiceException("401-2", "비밀번호가 일치하지 않습니다.");
-        }
+        memberService.checkPassword(
+                member,
+                reqBody.password()
+        );
 
         String accessToken = memberService.getAccessToken(member);
         rq.setCookie("accessToken", accessToken);
-
         rq.setCookie("apiKey", member.getApiKey());
 
         return new RsData<>(
@@ -63,11 +63,13 @@ public class ApiV1MemberController {
     @GetMapping("/me")
     public RsData<MemberDto> me() {
         Member actor = rq.getActor();
+        // 실시간성을 보장하기위해 DB 조회
+        Member member  = memberService.findById(actor.getId()).get();
 
         return new RsData(
                 "200-1",
                 "%s님 정보입니다.".formatted(actor.getNickname()),
-                new MemberDto(actor)
+                new MemberDto(member)
         );
     }
 
