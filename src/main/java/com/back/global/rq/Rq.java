@@ -1,85 +1,35 @@
 package com.back.global.rq;
 
 import com.back.domain.meber.member.entity.Member;
-import com.back.domain.meber.member.service.MemberService;
-import com.back.domain.post.post.service.PostService;
-import com.back.global.exception.ServiceException;
+import com.back.global.sercurity.SecurityUser;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
 public class Rq {
-    private final PostService postService;
     private final HttpServletRequest req;
     private final HttpServletResponse resp;
-    private final MemberService memberService;
 
     public Member getActor() {
-        String headerAuthorization = getHeader("Authorization", "");
-
-        String apiKey;
-        String accessToken;
-
-        // headerAuthorization이 존재한다면
-        if (!headerAuthorization.isBlank()) {
-            if (!headerAuthorization.startsWith("Bearer ")) {
-                throw new ServiceException("401-2", "인증 정보가 올바르지 않습니다.");
-            }
-
-            // ["Bearer", apiKey, accessToken]
-            String[] headerAuthorizations =  headerAuthorization.split(" ", 3);
-
-            apiKey = headerAuthorizations[1];
-            accessToken = headerAuthorizations.length == 3 ? headerAuthorizations[2] : "";
-        }else{
-            apiKey = getCookieValue("apiKey", "");
-            accessToken = getCookieValue("accessToken", "");
-        }
-
-        if (apiKey.isBlank()) throw new ServiceException("401-1", "로그인 후 사용해주세요.");
-
-        Member member = null;
-        boolean isAccessTokenExists = !accessToken.isBlank();
-        boolean isAccessTokenValid = false;
-
-        if (isAccessTokenExists) {
-            Map<String, Object> payload = memberService.payload(accessToken);
-
-            if (payload != null) {
-                long id = ((Number) payload.get("id")).longValue();
-                String username = (String) payload.get("username");
-                String nickname = (String) payload.get("nickname");
-                member = new Member(id, username, nickname);
-
-                // 토큰 유효성 검증 성공
-                isAccessTokenValid = true;
-            }
-        }
-
-        if (member == null) {
-            member = memberService.findByApiKey(apiKey)
-                    .orElseThrow(() -> new ServiceException("401-3", "회원을 찾을 수 없습니다."));
-        }
-
-        // 토큰 존재하고, 토큰 유효성 검증 실패 했을 때
-        if (isAccessTokenExists && !isAccessTokenValid) {
-            // apiKey(refresh token)을 이용한 accessToken 재발급
-            String actorAccessToken = memberService.getAccessToken(member);
-
-            setCookie("accessToken", actorAccessToken);
-            // 비교용으로 전달
-            setHeader("Authorization", actorAccessToken);
-        }
-
-        return member;
+        return Optional.ofNullable(
+                        SecurityContextHolder
+                                .getContext()
+                                .getAuthentication()
+                )
+                .map(Authentication::getPrincipal)
+                .filter(principal -> principal instanceof SecurityUser)
+                .map(principal -> (SecurityUser) principal)
+                .map(securityUser -> new Member(securityUser.getId(), securityUser.getUsername(), securityUser.getNickname()))
+                .orElse(null);
     }
 
     public void setCookie(String name, String value) {
@@ -88,15 +38,21 @@ public class Rq {
         Cookie cookie = new Cookie(name, value);
         cookie.setPath("/"); // 쿠키를 도메인 전체에서 쓰겠다.
         cookie.setHttpOnly(true); // 쿠키를 스크립트로 접근 못하게(XSS 공격방어)
+        cookie.setDomain("localhost"); // 쿠키가 적용될 도메인 지정
+        cookie.setSecure(true); // https 에서만 쿠키전송
+        cookie.setAttribute("SameSite", "Strict"); // 동일 사이트에서만 쿠키 전송(CSRF 공격방어)
 
+        // 값이 없다면 해당 변수를 삭제하라는 뜻
         if (value.isBlank()) {
             cookie.setMaxAge(0);
+        }else{
+            cookie.setMaxAge(60 * 60 * 24 * 365); // 1년
         }
 
         resp.addCookie(cookie);
     }
 
-    private void setHeader(String name, String value) {
+    public void setHeader(String name, String value) {
         if (value == null) value = "";
 
         if (value.isBlank()) {
